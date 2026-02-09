@@ -1,0 +1,28 @@
+# Build outputs
+/build/
+/app/build/
+*.apk
+*.aab
+
+# Gradle
+.gradle/
+/gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Local config
+local.properties
+
+# Signing credentials
+keystore.properties
+*.jks
+*.keystore
+
+# Misc
+captures/
+.externalNativeBuild/
+.cxx/

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Hush</string>
+    <string name="notification_channel_name">Playback</string>
+    <string name="notification_channel_description">Sound playback controls</string>
+    <string name="notification_title">Hush is playing</string>
+    <string name="action_pause">Pause</string>
+    <string name="action_play">Play</string>
+    <string name="action_stop">Stop</string>
+    <string name="premium_title">Unlock All Sounds</string>
+    <string name="premium_description">Remove ads and access all 18 sounds for just $2.99</string>
+    <string name="premium_button">Upgrade to Premium</string>
+    <string name="premium_restore">Restore Purchase</string>
+    <string name="timer_title">Sleep Timer</string>
+    <string name="max_sounds_message">Maximum of 5 sounds can be mixed at once</string>
+    <string name="premium_required">Premium Required</string>
+    <string name="premium_sound_message">Upgrade to premium to unlock this sound</string>
+
+    <!-- AdMob Test Ad Unit ID -->
+    <string name="admob_app_id">ca-app-pub-3940256099942544~3347511713</string>
+    <string name="admob_banner_id">ca-app-pub-3940256099942544/6300978111</string>
+</resources>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Moon/sleep icon representing Hush -->
+    <path
+        android:fillColor="#8B7FFF"
+        android:pathData="M54,28 C54,28 42,32 38,44 C34,56 40,68 52,72 C64,76 76,70 80,58 C80,58 68,64 58,58 C48,52 44,40 54,28 Z" />
+</vector>
