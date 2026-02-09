@@ -18,7 +18,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.hush.app"
+        applicationId = "com.toumari.hush"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
