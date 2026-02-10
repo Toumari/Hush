@@ -397,46 +397,106 @@ class SyntheticSoundGenerator(private val sourceType: SoundSourceType) {
         }
     }
 
-    // City: broadband noise with low-frequency rumble and occasional events
+    // City: traffic rumble + distant car pass-bys + urban hum + occasional horn/siren hints
     private fun generateCity(buffer: ShortArray) {
         for (i in buffer.indices) {
-            // Traffic rumble (heavy low-pass brown noise)
-            brownState += random.nextGaussian() * 250
-            brownState = brownState.coerceIn(-10000.0, 10000.0)
-            brownState *= 0.999
-
-            lpState += 0.01 * (brownState - lpState)
-
-            // Mid-range activity noise
-            val activity = random.nextGaussian() * 1000
-            hpState += 0.08 * (activity - hpState)
-
-            buffer[i] = (lpState * 0.6 + hpState * 0.4).toInt()
-                .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
             sampleCounter++
+            modPhase += 1.0 / SAMPLE_RATE
+
+            // Layer 1: Deep traffic rumble (heavy brown noise, very low)
+            brownState += random.nextGaussian() * 150
+            brownState = brownState.coerceIn(-10000.0, 10000.0)
+            brownState *= 0.9993
+            val rumble = brownState
+
+            // Layer 2: Steady mid-range urban hum (bandpass noise — HVAC, distant machines)
+            val midNoise = random.nextGaussian() * 1800
+            bpState1 += 0.06 * (midNoise - bpState1)
+            bpState2 += 0.015 * (bpState1 - bpState2)
+            val urbanHum = bpState1 - bpState2
+
+            // Layer 3: Car pass-by events (slow doppler-like sweeps through bandpass)
+            // A pass-by is a slow swell with shifting frequency content
+            modPhase2 += 1.0 / SAMPLE_RATE
+            val passbyRate = 0.08 // one every ~12 seconds
+            val passbyPhase = modPhase2 * passbyRate
+            val passbyEnv = (sin(2 * PI * passbyPhase) * 0.5 + 0.5).let { it * it }
+            val passbyCutoff = 0.03 + 0.08 * passbyEnv // shifts frequency as car passes
+            val passbyNoise = random.nextGaussian() * 3500
+            lpState2 += passbyCutoff * (passbyNoise - lpState2)
+            hpState2 += 0.02 * (lpState2 - hpState2)
+            val passby = (lpState2 - hpState2) * passbyEnv
+
+            // Layer 4: Occasional distant horn/siren hint (rare tonal blip)
+            val hornTrigger = random.nextFloat() < 0.00008
+            if (hornTrigger) phase2 = 0.0
+            val hornDecay = if (phase2 < 0.3) (1.0 - phase2 / 0.3) else 0.0
+            phase2 += 1.0 / SAMPLE_RATE
+            val hornFreq = 420 + 80 * sin(2 * PI * phase2 * 1.5) // slight warble
+            phase += 2 * PI * hornFreq / SAMPLE_RATE
+            val horn = sin(phase) * 1200 * hornDecay
+
+            // Layer 5: High-frequency urban air (light hiss — distant sounds blending)
+            val airNoise = random.nextGaussian() * 600
+            lpState3 += 0.15 * (airNoise - lpState3)
+            val air = lpState3
+
+            val sample = rumble * 0.25 + urbanHum * 0.25 + passby * 0.25 + horn * 0.10 + air * 0.15
+            buffer[i] = sample.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
         }
     }
 
-    // Cafe: mid-range murmur noise with clinking sounds
+    // Cafe: voice-like murmur + cup/plate clinks + espresso machine hiss + ambient warmth
     private fun generateCafe(buffer: ShortArray) {
         for (i in buffer.indices) {
-            // Murmur: bandpass filtered noise
-            val white = random.nextGaussian() * 2000
-            bpState1 += 0.05 * (white - bpState1)
-            bpState2 += 0.01 * (bpState1 - bpState2)
-            val murmur = bpState1 - bpState2
-
-            // Occasional clink transient
-            val clink = if (random.nextFloat() < 0.0003) {
-                sin(phase) * 3000 * random.nextFloat()
-            } else 0.0
-            phase += 2 * PI * (3000 + random.nextGaussian() * 800) / SAMPLE_RATE
-
-            lpState += 0.2 * (clink - lpState)
-
-            buffer[i] = (murmur * 0.8 + lpState * 0.2).toInt()
-                .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
             sampleCounter++
+            modPhase += 1.0 / SAMPLE_RATE
+
+            // Layer 1: Voice murmur (bandpass noise ~300-3000Hz with slow modulation)
+            // Multiple murmur "voices" at slightly different bands
+            val voiceNoise1 = random.nextGaussian() * 1800
+            bpState1 += 0.04 * (voiceNoise1 - bpState1) // lower voice band
+            bpState2 += 0.008 * (bpState1 - bpState2)
+            val murmur1 = bpState1 - bpState2
+
+            val voiceNoise2 = random.nextGaussian() * 1400
+            lpState += 0.07 * (voiceNoise2 - lpState) // higher voice band
+            hpState += 0.025 * (lpState - hpState)
+            val murmur2 = lpState - hpState
+
+            // Murmur modulation — conversation-like rhythm (irregular swells)
+            val murmurMod = 0.6 + 0.2 * sin(2 * PI * modPhase * 0.7) +
+                    0.12 * sin(2 * PI * modPhase * 1.3) +
+                    0.08 * sin(2 * PI * modPhase * 2.1)
+            val murmur = (murmur1 * 0.55 + murmur2 * 0.45) * murmurMod
+
+            // Layer 2: Cup/plate clinks (sharp resonant transients at various pitches)
+            val clinkTrigger = random.nextFloat()
+            val clinkHit = if (clinkTrigger < 0.00025) {
+                // Resonant clink: damped sine at random high pitch
+                dripEnv = 1.0
+                dripTimer = 2500 + random.nextDouble() * 3000 // random pitch 2500-5500 Hz
+                1.0
+            } else 0.0
+            dripEnv *= 0.9975 // ~30ms decay for ceramic/glass sound
+            phase += 2 * PI * dripTimer / SAMPLE_RATE
+            val clink = sin(phase) * 2500 * dripEnv
+
+            // Layer 3: Espresso machine / coffee grinder events (rare broadband burst)
+            val machineEvent = if (random.nextFloat() < 0.00005) 1.0 else 0.0
+            envelopeState = maxOf(envelopeState * 0.9997, machineEvent) // slow ~2s decay
+            val machineNoise = random.nextGaussian() * 2000
+            lpState2 += 0.12 * (machineNoise - lpState2)
+            val machine = lpState2 * envelopeState
+
+            // Layer 4: Warm room tone (very low, steady)
+            brownState += random.nextGaussian() * 60
+            brownState = brownState.coerceIn(-4000.0, 4000.0)
+            brownState *= 0.9996
+            val warmth = brownState
+
+            val sample = murmur * 0.45 + clink * 0.18 + machine * 0.12 + warmth * 0.25
+            buffer[i] = sample.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
         }
     }
 
@@ -487,49 +547,104 @@ class SyntheticSoundGenerator(private val sourceType: SoundSourceType) {
         }
     }
 
-    // Train: rhythmic clacking with low rumble
+    // Train: wheel rumble + double rail-joint clack + body sway + steel resonance + air rush
     private fun generateTrain(buffer: ShortArray) {
         for (i in buffer.indices) {
+            sampleCounter++
             modPhase += 1.0 / SAMPLE_RATE
 
-            // Wheel rumble (brown noise base)
-            brownState += random.nextGaussian() * 200
+            // Layer 1: Heavy wheel-on-rail rumble (deep brown noise)
+            brownState += random.nextGaussian() * 180
             brownState = brownState.coerceIn(-10000.0, 10000.0)
-            brownState *= 0.999
+            brownState *= 0.9992
+            val rumble = brownState
 
-            // Rhythmic clack (~2 Hz for rail joints)
-            val clackPhase = modPhase * 2.0
-            val clackEnv = (sin(2 * PI * clackPhase) * 0.5 + 0.5).let {
-                if (it > 0.85) (it - 0.85) / 0.15 else 0.0
-            }
-            val clack = random.nextGaussian() * 5000 * clackEnv
+            // Layer 2: Rhythmic double-clack (rail joints — "clickety-clack" pattern)
+            // Two hits close together, then gap: hit-hit...hit-hit...
+            val clackRate = 1.5 // joint pairs per second
+            val clackTime = (modPhase * clackRate) % 1.0
+            // First clack at 0.0, second at 0.12 of the cycle
+            val clack1Env = if (clackTime < 0.04) (1.0 - clackTime / 0.04) else 0.0
+            val clack2Env = if (clackTime > 0.10 && clackTime < 0.14) (1.0 - (clackTime - 0.10) / 0.04) else 0.0
+            val clackEnv = clack1Env + clack2Env * 0.8 // second hit slightly softer
+            val clackNoise = random.nextGaussian() * 5000
+            lpState += 0.25 * (clackNoise * clackEnv - lpState)
+            val clack = lpState
 
-            lpState += 0.1 * (clack - lpState)
+            // Layer 3: Body sway / suspension rock (very slow low-frequency oscillation)
+            modPhase2 += 1.0 / SAMPLE_RATE
+            val swayFreq = 0.8 // gentle rocking ~0.8 Hz
+            brownState2 += random.nextGaussian() * 100
+            brownState2 = brownState2.coerceIn(-5000.0, 5000.0)
+            brownState2 *= 0.9995
+            val swayMod = 0.85 + 0.15 * sin(2 * PI * modPhase2 * swayFreq)
+            val sway = brownState2 * swayMod
 
-            val sample = brownState * 0.6 + lpState * 0.4
+            // Layer 4: Steel resonance hum (low metallic drone from vibrating carriage)
+            phase += 2 * PI * 95 / SAMPLE_RATE // ~95 Hz fundamental
+            val steelHum = sin(phase) * 600 + sin(phase * 2.02) * 300 + sin(phase * 3.05) * 150
+            val humMod = 0.9 + 0.1 * sin(2 * PI * modPhase * 0.15)
+
+            // Layer 5: Air rush past windows (high-pass filtered noise)
+            val airNoise = random.nextGaussian() * 1200
+            lpState2 += 0.15 * (airNoise - lpState2)
+            hpState += 0.05 * (lpState2 - hpState)
+            val airRush = lpState2 - hpState
+
+            val sample = rumble * 0.25 + clack * 0.25 + sway * 0.15 +
+                    steelHum * humMod * 0.15 + airRush * 0.20
             buffer[i] = sample.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
-            sampleCounter++
         }
     }
 
-    // Airplane: heavy low-frequency roar with slight variation
+    // Airplane cabin: engine drone + broadband cabin noise + pressurization hiss + turbulence
     private fun generateAirplane(buffer: ShortArray) {
         for (i in buffer.indices) {
-            // Engine roar: pink-ish noise
-            val white = random.nextGaussian() * 4000
-            lpState += 0.03 * (white - lpState)
-
-            // Engine drone harmonics
-            phase += 2 * PI * 85 / SAMPLE_RATE
-            val drone = sin(phase) * 1200 + sin(phase * 2.03) * 600 + sin(phase * 3.07) * 300
-
-            // Slow variation
-            modPhase += 0.03 / SAMPLE_RATE
-            val variation = 0.95 + 0.05 * sin(2 * PI * modPhase)
-
-            val sample = (lpState * 0.65 + drone * 0.35) * variation
-            buffer[i] = sample.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
             sampleCounter++
+            modPhase += 1.0 / SAMPLE_RATE
+
+            // Layer 1: Engine drone (rich harmonics at ~88 Hz fundamental)
+            // Slightly detuned harmonics for realistic beating
+            phase += 2 * PI * 88 / SAMPLE_RATE
+            val engine = sin(phase) * 1000 +
+                    sin(phase * 2.01) * 700 +   // 2nd harmonic, slightly detuned
+                    sin(phase * 3.03) * 400 +   // 3rd
+                    sin(phase * 4.07) * 250 +   // 4th
+                    sin(phase * 5.02) * 150     // 5th
+            // Very slow engine RPM drift
+            val engineMod = 0.95 + 0.05 * sin(2 * PI * modPhase * 0.02)
+
+            // Layer 2: Broadband cabin noise (the main "roar" — filtered pink-ish noise)
+            val cabinNoise = random.nextGaussian() * 3000
+            lpState += 0.04 * (cabinNoise - lpState)  // moderate low-pass
+            // Second filter stage for smoother rolloff
+            lpState2 += 0.06 * (lpState - lpState2)
+            val cabin = lpState2
+
+            // Layer 3: Pressurization / AC hiss (high-frequency steady hiss)
+            val hissNoise = random.nextGaussian() * 800
+            lpState3 += 0.2 * (hissNoise - lpState3)
+            hpState += 0.08 * (lpState3 - hpState)
+            val hiss = lpState3 - hpState
+
+            // Layer 4: Low-frequency fuselage vibration (deep resonant rumble)
+            brownState += random.nextGaussian() * 120
+            brownState = brownState.coerceIn(-8000.0, 8000.0)
+            brownState *= 0.9994
+            val fuselage = brownState
+
+            // Layer 5: Occasional turbulence bumps (rare low-frequency transients)
+            val turbTrigger = random.nextFloat() < 0.00003
+            if (turbTrigger) envelopeState = 1.0
+            envelopeState *= 0.9998 // slow ~1.5s decay
+            brownState2 += random.nextGaussian() * 300
+            brownState2 = brownState2.coerceIn(-8000.0, 8000.0)
+            brownState2 *= 0.998
+            val turbulence = brownState2 * envelopeState
+
+            val sample = engine * engineMod * 0.20 + cabin * 0.30 + hiss * 0.12 +
+                    fuselage * 0.25 + turbulence * 0.13
+            buffer[i] = sample.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
         }
     }
 
